@@ -305,6 +305,36 @@ class GridInfo:
     def _unflatten_array(self, array):
         return array.reshape((len(self.lons), len(self.lats)))
 
+    def _split_by_lats(self, n):
+        m = len(self.lats)
+        n = min(n, m)
+        splits = [round(m*x/n) for x in range(n+1)]
+        newlats = [self.lats[splits[i]:splits[i+1]] for i in range(n)]
+        newlatbounds = [self.latbounds[splits[i]:splits[i+1]+1] for i in range(n)]
+        newgridinfos = []
+        for i in range(n):
+            gridinfo = GridInfo(self.lons,
+                                newlats[i],
+                                self.lonbounds,
+                                newlatbounds[i])
+            newgridinfos.append(gridinfo)
+        return newgridinfos
+
+    def _split_by_lons(self, n):
+        m = len(self.lons)
+        n = min(n, m)
+        splits = [round(m*x/n) for x in range(n+1)]
+        newlons = [self.lons[splits[i]:splits[i+1]] for i in range(n)]
+        newlonbounds = [self.lonbounds[splits[i]:splits[i+1]+1] for i in range(n)]
+        newgridinfos = []
+        for i in range(n):
+            gridinfo = GridInfo(newlons[i],
+                                self.lats,
+                                newlonbounds[i],
+                                self.latbounds)
+            newgridinfos.append(gridinfo)
+        return newgridinfos
+
 
 def _get_regrid_weights_dict(src_field, tgt_field):
     regridder = ESMF.Regrid(
@@ -342,7 +372,7 @@ def _weights_dict_to_sparse_array(weights, shape, index_offsets):
 
 
 class Regridder:
-    def __init__(self, src, tgt, precomputed_weights=None):
+    def __init__(self, src, tgt, precomputed_weights=None, split=None):
         """
         Creates a regridder designed to regrid data from a specified
         source mesh/grid to a specified target mesh/grid.
@@ -369,14 +399,50 @@ class Regridder:
         self.tgt = tgt
 
         if precomputed_weights is None:
-            weights_dict = _get_regrid_weights_dict(
-                src.make_esmf_field(), tgt.make_esmf_field()
-            )
-            self.weight_matrix = _weights_dict_to_sparse_array(
-                weights_dict,
-                (self.tgt.size(), self.src.size()),
-                (self.tgt._index_offset(), self.src._index_offset()),
-            )
+            if split is None:
+                weights_dict = _get_regrid_weights_dict(
+                    src.make_esmf_field(), tgt.make_esmf_field()
+                )
+                self.weight_matrix = _weights_dict_to_sparse_array(
+                    weights_dict,
+                    (self.tgt.size(), self.src.size()),
+                    (self.tgt._index_offset(), self.src._index_offset()),
+                )
+            else:
+                gi, n = split
+                grid = None
+                if gi == 0:
+                    grid = self.src
+                elif gi == 1:
+                    grid = self.tgt
+                split_matrices = []
+                for gridsection in grid._split_by_lons(n):
+                    if gi == 0:
+                        weights_dict = _get_regrid_weights_dict(
+                            gridsection.make_esmf_field(), tgt.make_esmf_field()
+                        )
+
+                        weight_matrix = _weights_dict_to_sparse_array(
+                            weights_dict,
+                            (self.tgt.size(), gridsection.size()),
+                            (self.tgt._index_offset(), gridsection._index_offset()),
+                        )
+                    elif gi == 1:
+                        weights_dict = _get_regrid_weights_dict(
+                            src.make_esmf_field(), gridsection.make_esmf_field()
+                        )
+
+                        weight_matrix = _weights_dict_to_sparse_array(
+                            weights_dict,
+                            (gridsection.size(), self.src.size()),
+                            (gridsection._index_offset(), self.src._index_offset()),
+                        )
+                    split_matrices.append(weight_matrix)
+                if gi == 0:
+                    self.weight_matrix = scipy.sparse.hstack(split_matrices)
+                elif gi == 1:
+                    self.weight_matrix = scipy.sparse.vstack(split_matrices)
+
         else:
             if not scipy.sparse.isspmatrix(precomputed_weights):
                 raise ValueError(
