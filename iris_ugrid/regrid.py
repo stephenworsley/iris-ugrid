@@ -136,6 +136,25 @@ class MeshInfo:
     def _unflatten_array(self, array):
         return array
 
+    def _split(self, n):
+        m = len(self.fnc)
+        n = min(n, m)
+        splits = [round(m*x/n) for x in range(n+1)]
+        newfncs = [self.fnc[splits[i]:splits[i+1]] for i in range(n)]
+        newmeshinfos = []
+        for newfnc in newfncs:
+            new_nodes = list(set(newfnc.flatten()))
+            node_index_dict = {new_nodes[i]: i+self.nsi for i in range(len(new_nodes))}
+            subfnc = np.vectorize(node_index_dict.get)(newfnc)
+
+            new_node_coords = self.node_coords[list(np.array(new_nodes)-self.nsi)]
+            meshinfo = MeshInfo(new_node_coords,
+                                subfnc,
+                                self.nsi,
+                                self.esi)
+            newmeshinfos.append(meshinfo)
+        return newmeshinfos
+
 
 class GridInfo:
     """
@@ -335,6 +354,9 @@ class GridInfo:
             newgridinfos.append(gridinfo)
         return newgridinfos
 
+    def _split(self, n):
+        return self._split_by_lons(n)
+
 
 def _get_regrid_weights_dict(src_field, tgt_field):
     regridder = ESMF.Regrid(
@@ -416,10 +438,12 @@ class Regridder:
                 elif gi == 1:
                     grid = self.tgt
                 split_matrices = []
-                for gridsection in grid._split_by_lons(n):
+                for gridsection in grid._split(n):
                     if gi == 0:
+                        src_field = gridsection.make_esmf_field()
+                        tgt_field = tgt.make_esmf_field()
                         weights_dict = _get_regrid_weights_dict(
-                            gridsection.make_esmf_field(), tgt.make_esmf_field()
+                            src_field, tgt_field
                         )
 
                         weight_matrix = _weights_dict_to_sparse_array(
@@ -428,8 +452,10 @@ class Regridder:
                             (self.tgt._index_offset(), gridsection._index_offset()),
                         )
                     elif gi == 1:
+                        src_field = src.make_esmf_field()
+                        tgt_field = gridsection.make_esmf_field()
                         weights_dict = _get_regrid_weights_dict(
-                            src.make_esmf_field(), gridsection.make_esmf_field()
+                            src_field, tgt_field
                         )
 
                         weight_matrix = _weights_dict_to_sparse_array(
