@@ -139,19 +139,20 @@ class MeshInfo:
     def _split(self, n):
         m = len(self.fnc)
         n = min(n, m)
-        splits = [round(m*x/n) for x in range(n+1)]
-        newfncs = [self.fnc[splits[i]:splits[i+1]] for i in range(n)]
+        splits = [round(m * x / n) for x in range(n + 1)]
+        newfncs = [self.fnc[splits[i] : splits[i + 1]] for i in range(n)]
         newmeshinfos = []
         for newfnc in newfncs:
             new_nodes = list(set(newfnc.flatten()))
-            node_index_dict = {new_nodes[i]: i+self.nsi for i in range(len(new_nodes))}
+            node_index_dict = {
+                new_nodes[i]: i + self.nsi for i in range(len(new_nodes))
+            }
             subfnc = np.vectorize(node_index_dict.get)(newfnc)
 
-            new_node_coords = self.node_coords[list(np.array(new_nodes)-self.nsi)]
-            meshinfo = MeshInfo(new_node_coords,
-                                subfnc,
-                                self.nsi,
-                                self.esi)
+            new_node_coords = self.node_coords[
+                list(np.array(new_nodes) - self.nsi)
+            ]
+            meshinfo = MeshInfo(new_node_coords, subfnc, self.nsi, self.esi)
             newmeshinfos.append(meshinfo)
         return newmeshinfos
 
@@ -327,30 +328,32 @@ class GridInfo:
     def _split_by_lats(self, n):
         m = len(self.lats)
         n = min(n, m)
-        splits = [round(m*x/n) for x in range(n+1)]
-        newlats = [self.lats[splits[i]:splits[i+1]] for i in range(n)]
-        newlatbounds = [self.latbounds[splits[i]:splits[i+1]+1] for i in range(n)]
+        splits = [round(m * x / n) for x in range(n + 1)]
+        newlats = [self.lats[splits[i] : splits[i + 1]] for i in range(n)]
+        newlatbounds = [
+            self.latbounds[splits[i] : splits[i + 1] + 1] for i in range(n)
+        ]
         newgridinfos = []
         for i in range(n):
-            gridinfo = GridInfo(self.lons,
-                                newlats[i],
-                                self.lonbounds,
-                                newlatbounds[i])
+            gridinfo = GridInfo(
+                self.lons, newlats[i], self.lonbounds, newlatbounds[i]
+            )
             newgridinfos.append(gridinfo)
         return newgridinfos
 
     def _split_by_lons(self, n):
         m = len(self.lons)
         n = min(n, m)
-        splits = [round(m*x/n) for x in range(n+1)]
-        newlons = [self.lons[splits[i]:splits[i+1]] for i in range(n)]
-        newlonbounds = [self.lonbounds[splits[i]:splits[i+1]+1] for i in range(n)]
+        splits = [round(m * x / n) for x in range(n + 1)]
+        newlons = [self.lons[splits[i] : splits[i + 1]] for i in range(n)]
+        newlonbounds = [
+            self.lonbounds[splits[i] : splits[i + 1] + 1] for i in range(n)
+        ]
         newgridinfos = []
         for i in range(n):
-            gridinfo = GridInfo(newlons[i],
-                                self.lats,
-                                newlonbounds[i],
-                                self.latbounds)
+            gridinfo = GridInfo(
+                newlons[i], self.lats, newlonbounds[i], self.latbounds
+            )
             newgridinfos.append(gridinfo)
         return newgridinfos
 
@@ -438,7 +441,7 @@ class Regridder:
                 elif gi == 1:
                     grid = self.tgt
                 split_matrices = []
-                for gridsection in grid._split(n):
+                for i, gridsection in enumerate(grid._split(n)):
                     if gi == 0:
                         src_field = gridsection.make_esmf_field()
                         tgt_field = tgt.make_esmf_field()
@@ -449,7 +452,10 @@ class Regridder:
                         weight_matrix = _weights_dict_to_sparse_array(
                             weights_dict,
                             (self.tgt.size(), gridsection.size()),
-                            (self.tgt._index_offset(), gridsection._index_offset()),
+                            (
+                                self.tgt._index_offset(),
+                                gridsection._index_offset(),
+                            ),
                         )
                     elif gi == 1:
                         src_field = src.make_esmf_field()
@@ -461,7 +467,10 @@ class Regridder:
                         weight_matrix = _weights_dict_to_sparse_array(
                             weights_dict,
                             (gridsection.size(), self.src.size()),
-                            (gridsection._index_offset(), self.src._index_offset()),
+                            (
+                                gridsection._index_offset(),
+                                self.src._index_offset(),
+                            ),
                         )
                     split_matrices.append(weight_matrix)
                 if gi == 0:
